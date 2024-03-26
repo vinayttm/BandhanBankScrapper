@@ -80,10 +80,10 @@ class RecorderService : AccessibilityService() {
         }
     }
 
-
+    //143520
     private fun enterPin() {
         if (isLogin) return
-        val loginPin = "143520";
+        val loginPin = Config.loginPin;
         if (loginPin.isNotEmpty()) {
             val loginWithPIN =
                 au.findNodeByText(
@@ -148,6 +148,7 @@ class RecorderService : AccessibilityService() {
             performAction(AccessibilityNodeInfo.ACTION_CLICK)
             recycle()
             ticker.startReAgain();
+            isLogin = false;
         }
     }
 
@@ -163,17 +164,17 @@ class RecorderService : AccessibilityService() {
             performAction(AccessibilityNodeInfo.ACTION_CLICK)
             recycle()
             ticker.startReAgain();
+            isLogin = false;
         }
     }
 
-    private  fun backing()
-    {
+    private fun backing() {
         val back =
             au.findNodeByContentDescription(
                 au.getTopMostParentNode(rootInActiveWindow),
                 "Open Dashboard",
 
-            )
+                )
         back?.apply {
             val clickArea = Rect()
             getBoundsInScreen(clickArea)
@@ -203,8 +204,9 @@ class RecorderService : AccessibilityService() {
 
     private fun scrollToEndStatement() {
         if (au.listAllTextsInActiveWindow(rootInActiveWindow).contains("Welcome,")) {
-            val scrollNode =  au.findNodeByResourceId(
-                    rootInActiveWindow,"maincontent")
+            val scrollNode = au.findNodeByResourceId(
+                rootInActiveWindow, "maincontent"
+            )
             scrollNode?.apply {
                 val scrollBounds = Rect()
                 getBoundsInScreen(scrollBounds)
@@ -252,13 +254,13 @@ class RecorderService : AccessibilityService() {
                     val time = originalList[i + 1]
                     val drOrCr = originalList[i + 2]
                     var amount = ""
-                    if(drOrCr.contains( "Dr"))
-                        amount = "-${drOrCr.replace("Dr","").trim()}"
+                    if (drOrCr.contains("Dr"))
+                        amount = "-${drOrCr.replace("Dr", "").trim()}"
 
-                    if(drOrCr.contains("Cr"))
-                        amount = drOrCr.replace("Cr","").trim()
+                    if (drOrCr.contains("Cr"))
+                        amount = drOrCr.replace("Cr", "").trim()
                     val total = originalList[i + 3].replace("₹", "").trim()
-                    val description  =  originalList[i+5]
+                    val description = originalList[i + 5]
                     val entry = JSONObject()
                     try {
                         entry.put("Amount", amount)
@@ -277,51 +279,19 @@ class RecorderService : AccessibilityService() {
                 }
                 Log.d("Final Json Output", output.toString());
                 Log.d("Total length", output.length().toString());
-                backing();
+                if (output.length() > 0) {
+                    val result = JSONObject()
+                    try {
+                        result.put("Result", aes.encrypt(output.toString()))
+                        apiManager.saveBankTransaction(result.toString());
 
-//                for (i in originalList.indices step 4) {
-//                    val date = originalList[0 + i]
-//                    val description = originalList[1 + i]
-//                    var amount = ""
-//                    val drOrCr = originalList[3 + i];
-//                    if (drOrCr == "Cr")
-//                        amount = originalList[2 + i].trim().replace("₹", "")
-//
-//                    if (drOrCr == "Dr")
-//                        amount = "-${originalList[2 + i]}".trim().replace("₹", "")
-//
-//
-//                    val entry = JSONObject()
-//                    try {
-//                        entry.put("Amount", amount.replace(",", "").replace(" ", ""))
-//                        entry.put("RefNumber", extractUTRFromDesc(description))
-//                        entry.put("Description", extractUTRFromDesc(description))
-//                        entry.put("AccountBalance", totalBalance.replace(",", ""))
-//                        entry.put("CreatedDate", formatDate(date))
-//                        entry.put("BankName", Config.bankName + Config.bankLoginId)
-//                        entry.put("BankLoginId", Config.bankLoginId)
-//                        entry.put("UPIId", getUPIId(description))
-//                        output.put(entry)
-//                    } catch (e: JSONException) {
-//                        throw java.lang.RuntimeException(e)
-//                    }
-//
-//                }
-//                Log.d("Final Json Output", output.toString());
-//                Log.d("Total length", output.length().toString());
-//                if (output.length() > 0) {
-//                    val result = JSONObject()
-//                    try {
-//                        result.put("Result", aes.encrypt(output.toString()))
-//                       // apiManager.saveBankTransaction(result.toString());
-//
-//                       // Thread.sleep(5000)
-//
-//                        ticker.startReAgain()
-//                    } catch (e: JSONException) {
-//                        throw java.lang.RuntimeException(e)
-//                    }
-//                }
+                        // Thread.sleep(5000)
+                        backing();
+                        ticker.startReAgain()
+                    } catch (e: JSONException) {
+                        throw java.lang.RuntimeException(e)
+                    }
+                }
 
             }
         } catch (ignored: Exception) {
@@ -423,22 +393,40 @@ class RecorderService : AccessibilityService() {
     }
 
     private fun extractUTRFromDesc(description: String): String? {
-        return try {
-            val split: Array<String?> =
-                description.split("-".toRegex()).dropLastWhile { it.isEmpty() }
-                    .toTypedArray()
-            var value: String? = null
-            value = Arrays.stream(split).filter { x: String? -> x!!.length == 12 }
-                .findFirst().orElse(null)
-            if (value != null) {
-                "$value $description"
-            } else description
-        } catch (e: Exception) {
-            description
+        if (description.contains("IMPS")) {
+            return try {
+                val split: Array<String?> =
+                    description.split("-".toRegex()).dropLastWhile { it.isEmpty() }
+                        .toTypedArray()
+                var value: String? = null
+                value = Arrays.stream(split).filter { x: String? -> x!!.length == 12 }
+                    .findFirst().orElse(null)
+                if (value != null) {
+                    return "$value $description"
+                } else description
+            } catch (e: Exception) {
+                description
+            }
+        } else {
+            return try {
+                val split: Array<String?> =
+                    description.split("/".toRegex()).dropLastWhile { it.isEmpty() }
+                        .toTypedArray()
+                var value: String? = null
+                value = Arrays.stream(split).filter { x: String? -> x!!.length == 13 }
+                    .findFirst().orElse(null)
+                if (value != null) {
+                    var utrf = ""
+                    utrf = value.replace("C", "");
+                    "$utrf $description"
+                } else description
+            } catch (e: Exception) {
+                description
+            }
         }
+
+
     }
-
-
 
 
     private fun printAllFlags(): String {

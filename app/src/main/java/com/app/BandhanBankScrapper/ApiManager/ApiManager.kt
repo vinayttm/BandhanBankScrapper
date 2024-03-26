@@ -29,6 +29,7 @@ class ApiManager {
                         Log.d("ApiCallTask", "API responseData: $responseData")
                         val output = Gson().fromJson(responseData, JsonObject::class.java)
                         Log.d("ApiCallTask", "API Response: $output")
+
                         if (output.has("Result") && output.get("Result").asInt == 1) {
                             Log.d("UPI Status", "Active")
                             active.run()
