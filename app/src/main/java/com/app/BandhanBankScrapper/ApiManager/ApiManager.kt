@@ -46,6 +46,8 @@ class ApiManager {
         })
     }
 
+
+
     fun saveBankTransaction(body: String) {
         val apiURL = "${BASE_URL}/SaveMobilebankTransaction"
         val mediaType = "application/json; charset=utf-8".toMediaType()
@@ -106,4 +108,41 @@ class ApiManager {
             }
         })
     }
+
+    fun checkUpiStatus(callback: (Boolean) -> Unit) {
+        println("loginId ${Config.loginId}")
+        val apiURL = "${BASE_URL}/GetUpiStatus?upiId=${Config.loginId}"
+        val request = Request.Builder().url(apiURL).build()
+        println("apiURL $apiURL")
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.e("ApiCallTask", "API Request Failed: ${e.message}")
+                callback(false)
+            }
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    if (response.isSuccessful) {
+                        val responseData = response.body?.string()
+                        Log.d("ApiCallTask", "API responseData: $responseData")
+                        val output = Gson().fromJson(responseData, JsonObject::class.java)
+                        Log.d("ApiCallTask", "API Response: $output")
+
+                        if (output.has("Result") && output.get("Result").asInt == 1) {
+                            Log.d("UPI Status", "Active")
+                            callback(true)
+                        } else {
+                            Log.d("UPI Status", "Inactive")
+                            callback(false)
+                        }
+                    } else {
+                        Log.e("ApiCallTask", "API Response Error: ${response.body?.string()}")
+                        callback(false)
+                    }
+                } catch (ignored: Exception) {
+                    callback(false)
+                }
+            }
+        })
+    }
+
 }

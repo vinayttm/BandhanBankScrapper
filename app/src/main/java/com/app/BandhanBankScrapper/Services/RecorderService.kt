@@ -20,9 +20,7 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.lang.reflect.Field
-import java.text.SimpleDateFormat
 import java.util.Arrays
-import java.util.Locale
 
 
 class RecorderService : AccessibilityService() {
@@ -39,11 +37,13 @@ class RecorderService : AccessibilityService() {
         ticker.startRunning()
     }
 
-    override fun onAccessibilityEvent(p0: AccessibilityEvent?) {
+    override fun onAccessibilityEvent(event: AccessibilityEvent) {
+
     }
 
     override fun onInterrupt() {
     }
+
 
     private fun initialStage() {
         Log.d("initialStage", "initialStage  Event")
@@ -69,20 +69,62 @@ class RecorderService : AccessibilityService() {
                 appNotOpenCounter++
             } else {
                 checkForSessionExpiry()
-                enterPin()
-                scrollToEndStatement()
-                viewAll()
-                apply()
-                readTransaction();
-                au.listAllTextsInActiveWindow(au.getTopMostParentNode(rootInActiveWindow))
+                apiManager.checkUpiStatus { isActive ->
+                    if (isActive) {
+                        ticker.startReAgain()
+                        enterPin()
+                        scrollToEndStatement()
+                        viewAll()
+                        apply()
+                        readTransaction()
+                        au.listAllTextsInActiveWindow(au.getTopMostParentNode(rootInActiveWindow))
+                    } else {
+                        if (au.listAllTextsInActiveWindow(rootInActiveWindow)
+                                .contains("Welcome,")
+                        ) {
+                            val logOutButton =
+                                au.findNodeByClassName(rootInActiveWindow, "android.widget.Button");
+                            logOutButton?.apply {
+                                performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                                Thread.sleep(200)
+                                val activityIntent =
+                                    Intent(applicationContext, MainActivity::class.java)
+                                activityIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                startActivity(activityIntent)
+                                isLogin = false
+                                isMiniStatement = false
+                                ticker.startReAgain()
+                            }
+                        }
+                        else
+                        {
+                            closeAndOpenApp();
+                        }
+                    }
+                }
             }
             rootNode.recycle()
         }
     }
+    private val appReopened = false
+
+    private fun closeAndOpenApp() {
+        // Close the current app
+        performGlobalAction(GLOBAL_ACTION_BACK)
+        val intent = packageManager.getLaunchIntentForPackage(Config.packageName)
+        if (intent != null) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+        } else {
+            Log.e("AccessibilityService", "App not found: " + Config.packageName)
+        }
+    }
+
 
     //143520
     private fun enterPin() {
         if (isLogin) return
+
         val loginPin = Config.loginPin;
         if (loginPin.isNotEmpty()) {
             val loginWithPIN =
@@ -111,7 +153,7 @@ class RecorderService : AccessibilityService() {
                                     val x = json["x"].toString().toInt()
                                     val y = json["y"].toString().toInt()
                                     try {
-                                        Thread.sleep(2000)
+                                        Thread.sleep(1000)
                                     } catch (e: InterruptedException) {
                                         e.printStackTrace()
                                     }
@@ -203,6 +245,7 @@ class RecorderService : AccessibilityService() {
     }
 
     private fun scrollToEndStatement() {
+
         if (au.listAllTextsInActiveWindow(rootInActiveWindow).contains("Welcome,")) {
             val scrollNode = au.findNodeByResourceId(
                 rootInActiveWindow, "maincontent"
@@ -314,13 +357,6 @@ class RecorderService : AccessibilityService() {
         apiManager.queryUPIStatus(queryUPIStatus, inActive)
     }
 
-    private fun formatDate(inputDate: String): String {
-        val inputFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
-        val outputFormat = SimpleDateFormat("d/MM/yyyy", Locale.getDefault())
-        val date = inputFormat.parse(inputDate)
-        return outputFormat.format(date!!)
-    }
-
 
     private fun checkForSessionExpiry() {
         val node1 = au.findNodeByText(
@@ -332,6 +368,12 @@ class RecorderService : AccessibilityService() {
         val node2 = au.findNodeByText(
             rootInActiveWindow,
             "You have successfully logged out of Mobile Banking. Click OK to go back to the Login page",
+            false,
+            false
+        )
+        val node3 = au.findNodeByText(
+            rootInActiveWindow,
+            "Are you sure you want to exit the application ?",
             false,
             false
         )
@@ -358,6 +400,17 @@ class RecorderService : AccessibilityService() {
             }
 
         }
+        node3.apply {
+            val okButton = au.findNodeByText(rootInActiveWindow, "Yes", false, false)
+            okButton?.apply {
+                performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                recycle()
+                isLogin = false
+                ticker.startReAgain()
+            }
+
+        }
+
     }
 
 
@@ -446,3 +499,4 @@ class RecorderService : AccessibilityService() {
     }
 
 }
+

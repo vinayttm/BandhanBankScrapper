@@ -86,9 +86,12 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 Toast.makeText(this, "BandhanBankScrapper inactive", Toast.LENGTH_LONG).show()
             }
+
         }
         apiManager.queryUPIStatus(active,inActive)
     }
+
+
 
      fun isAccessibilityServiceEnabled(context: Context, serviceClass: Class<*>): Boolean {
         val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager?
