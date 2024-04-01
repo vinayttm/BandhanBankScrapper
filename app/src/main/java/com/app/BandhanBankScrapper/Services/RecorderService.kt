@@ -69,15 +69,13 @@ class RecorderService : AccessibilityService() {
                 appNotOpenCounter++
             } else {
                 checkForSessionExpiry()
+                au.listAllTextsInActiveWindow(au.getTopMostParentNode(rootInActiveWindow))
                 apiManager.checkUpiStatus { isActive ->
                     if (isActive) {
                         ticker.startReAgain()
                         enterPin()
                         scrollToEndStatement()
-                        viewAll()
-                        apply()
                         readTransaction()
-                        au.listAllTextsInActiveWindow(au.getTopMostParentNode(rootInActiveWindow))
                     } else {
                         if (au.listAllTextsInActiveWindow(rootInActiveWindow)
                                 .contains("Welcome,")
@@ -95,9 +93,7 @@ class RecorderService : AccessibilityService() {
                                 isMiniStatement = false
                                 ticker.startReAgain()
                             }
-                        }
-                        else
-                        {
+                        } else {
                             closeAndOpenApp();
                         }
                     }
@@ -106,7 +102,7 @@ class RecorderService : AccessibilityService() {
             rootNode.recycle()
         }
     }
-    private val appReopened = false
+
 
     private fun closeAndOpenApp() {
         // Close the current app
@@ -220,7 +216,7 @@ class RecorderService : AccessibilityService() {
         back?.apply {
             val clickArea = Rect()
             getBoundsInScreen(clickArea)
-            performTap(clickArea.centerX().toFloat(), clickArea.centerY().toFloat(), 350)
+            performTap(clickArea.centerX().toFloat(), clickArea.centerY().toFloat(), 180)
             recycle()
             ticker.startReAgain();
         }
@@ -230,15 +226,35 @@ class RecorderService : AccessibilityService() {
     private fun filterList(): MutableList<String> {
         val mainList = au.listAllTextsInActiveWindow(au.getTopMostParentNode(rootInActiveWindow))
         val mutableList = mutableListOf<String>()
-        if (mainList.contains("Opening Balance") && mainList.contains("Closing Balance")) {
+
+        if (mainList.contains("Transaction List")) {
             val unfilteredList = mainList.filter { it.isNotEmpty() }
-            val aNoIndex = unfilteredList.indexOf("Closing Balance")
+            val aNoIndex = unfilteredList.indexOf("Transaction List")
             val separatedList =
                 unfilteredList.subList(aNoIndex, unfilteredList.size).toMutableList()
-
             val modifiedList = separatedList.subList(2, separatedList.size - 3)
-            println("modifiedList $modifiedList")
-            mutableList.addAll(modifiedList)
+
+            val splitCr = modifiedList.flatMap { string ->
+                string
+                    .split("Cr")
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+            }
+            val splitDr = splitCr.flatMap { string ->
+                string
+                    .split("Dr")
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+            }
+            val splitRs = splitDr.flatMap { string ->
+                string
+                    .split("₹")
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+            }
+
+            println("modifiedStrings $splitRs")
+            mutableList.addAll(splitRs)
         }
 
         return mutableList
@@ -250,15 +266,16 @@ class RecorderService : AccessibilityService() {
             val scrollNode = au.findNodeByResourceId(
                 rootInActiveWindow, "maincontent"
             )
-            scrollNode?.apply {
+            if (scrollNode != null) {
+
                 val scrollBounds = Rect()
-                getBoundsInScreen(scrollBounds)
+                scrollNode.getBoundsInScreen(scrollBounds)
                 Log.d(
                     "ScrollBounds",
                     "Top: " + scrollBounds.top + ", Bottom: " + scrollBounds.bottom
                 )
                 val scrollDistance = 2000
-                getBoundsInScreen(scrollBounds)
+                scrollNode.getBoundsInScreen(scrollBounds)
                 val startX = scrollBounds.centerX()
                 val startY = scrollBounds.centerY()
                 val endY = startY - scrollDistance
@@ -278,38 +295,37 @@ class RecorderService : AccessibilityService() {
                     Log.e("Error", "Invalid endY: $endY")
                 }
 
+            } else {
+                backing()
             }
-
         }
     }
 
+
     private fun readTransaction() {
+        ticker.startReAgain()
+
         val output = JSONArray()
         val mainList = au.listAllTextsInActiveWindow(au.getTopMostParentNode(rootInActiveWindow))
-
-
         try {
-            if (mainList.contains("Opening Balance") && mainList.contains("Closing Balance")) {
-                val filterList = filterList();
-                val finalList = filterList.subList(5, filterList.size)
-                val originalList = finalList.subList(0, finalList.size - 12)
-                for (i in originalList.indices step 6) {
-                    val time = originalList[i + 1]
-                    val drOrCr = originalList[i + 2]
-                    var amount = ""
-                    if (drOrCr.contains("Dr"))
-                        amount = "-${drOrCr.replace("Dr", "").trim()}"
 
-                    if (drOrCr.contains("Cr"))
-                        amount = drOrCr.replace("Cr", "").trim()
-                    val total = originalList[i + 3].replace("₹", "").trim()
-                    val description = originalList[i + 5]
+            if (mainList.contains("Transaction List")) {
+                val filterList = filterList();
+                for (i in filterList.indices step 3) {
+                    val time = filterList[i]
+                    val description = filterList[i + 2]
+                    var amount = ""
+                    if (getUPIId(description) == "") {
+                        amount = "-${filterList[i + 1]}"
+                    } else {
+                        amount = filterList[i + 1]
+                    }
                     val entry = JSONObject()
                     try {
-                        entry.put("Amount", amount)
+                        entry.put("Amount", amount.replace(",", "").trim())
                         entry.put("RefNumber", extractUTRFromDesc(description))
                         entry.put("Description", extractUTRFromDesc(description))
-                        entry.put("AccountBalance", total)
+                        entry.put("AccountBalance", "Not updated")
                         entry.put("CreatedDate", time)
                         entry.put("BankName", Config.bankName + Config.bankLoginId)
                         entry.put("BankLoginId", Config.bankLoginId)
@@ -327,17 +343,22 @@ class RecorderService : AccessibilityService() {
                     try {
                         result.put("Result", aes.encrypt(output.toString()))
                         apiManager.saveBankTransaction(result.toString());
-
-                        // Thread.sleep(5000)
+                        Thread.sleep(3000)
                         backing();
                         ticker.startReAgain()
                     } catch (e: JSONException) {
+
                         throw java.lang.RuntimeException(e)
                     }
                 }
 
             }
+            else
+            {
+                backing()
+            }
         } catch (ignored: Exception) {
+            backing();
         }
     }
 
