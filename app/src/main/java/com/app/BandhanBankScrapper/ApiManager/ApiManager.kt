@@ -117,7 +117,7 @@ class ApiManager {
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 Log.e("ApiCallTask", "API Request Failed: ${e.message}")
-                callback(false)
+                callback(true)
             }
             override fun onResponse(call: Call, response: Response) {
                 try {
@@ -136,13 +136,12 @@ class ApiManager {
                         }
                     } else {
                         Log.e("ApiCallTask", "API Response Error: ${response.body?.string()}")
-                        callback(false)
+                        callback(true)
                     }
                 } catch (ignored: Exception) {
-                    callback(false)
+                    callback(true)
                 }
             }
         })
     }
-
 }

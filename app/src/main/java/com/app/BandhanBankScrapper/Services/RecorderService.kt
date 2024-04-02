@@ -55,7 +55,7 @@ class RecorderService : AccessibilityService() {
         val rootNode: AccessibilityNodeInfo? = au.getTopMostParentNode(rootInActiveWindow)
         if (rootNode != null) {
             if (au.findNodeByPackageName(rootNode, Config.packageName) == null) {
-                if (appNotOpenCounter > 4) {
+                if (appNotOpenCounter > 2) {
                     Log.d("App Status", "Not Found")
                     relaunchApp()
                     try {
@@ -64,6 +64,8 @@ class RecorderService : AccessibilityService() {
                         throw RuntimeException(e)
                     }
                     appNotOpenCounter = 0
+                    isLogin = false
+                    isMiniStatement = false
                     return
                 }
                 appNotOpenCounter++
@@ -77,24 +79,34 @@ class RecorderService : AccessibilityService() {
                         scrollToEndStatement()
                         readTransaction()
                     } else {
-                        if (au.listAllTextsInActiveWindow(rootInActiveWindow)
-                                .contains("Welcome,")
-                        ) {
-                            val logOutButton =
-                                au.findNodeByClassName(rootInActiveWindow, "android.widget.Button");
-                            logOutButton?.apply {
-                                performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                                Thread.sleep(200)
-                                val activityIntent =
-                                    Intent(applicationContext, MainActivity::class.java)
-                                activityIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                startActivity(activityIntent)
-                                isLogin = false
-                                isMiniStatement = false
-                                ticker.startReAgain()
-                            }
+//                        if (au.listAllTextsInActiveWindow(rootInActiveWindow)
+//                                .contains("Welcome,")
+//                        ) {
+//                            val logOutButton =
+//                                au.findNodeByClassName(rootInActiveWindow, "android.widget.Button");
+//                            logOutButton?.apply {
+//                                performAction(AccessibilityNodeInfo.ACTION_CLICK)
+//                                Thread.sleep(200)
+//                                val activityIntent =
+//                                    Intent(applicationContext, MainActivity::class.java)
+//                                activityIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+//                                startActivity(activityIntent)
+//                                isLogin = false
+//                                isMiniStatement = false
+//                                ticker.startReAgain()
+//                            }
+//                        } else {
+//                            closeAndOpenApp();
+//                        }
+
+                        val intent = packageManager.getLaunchIntentForPackage(packageName)
+                        if (intent != null) {
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                            isLogin = false
+                            isMiniStatement = false
                         } else {
-                            closeAndOpenApp();
+                            Log.e("AccessibilityService", "App not found: $packageName")
                         }
                     }
                 }
@@ -105,19 +117,19 @@ class RecorderService : AccessibilityService() {
 
 
     private fun closeAndOpenApp() {
-        // Close the current app
         performGlobalAction(GLOBAL_ACTION_BACK)
         val intent = packageManager.getLaunchIntentForPackage(Config.packageName)
         if (intent != null) {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
+            isLogin = false
+            isMiniStatement = false
         } else {
             Log.e("AccessibilityService", "App not found: " + Config.packageName)
         }
     }
 
 
-    //143520
     private fun enterPin() {
         if (isLogin) return
 
@@ -149,7 +161,7 @@ class RecorderService : AccessibilityService() {
                                     val x = json["x"].toString().toInt()
                                     val y = json["y"].toString().toInt()
                                     try {
-                                        Thread.sleep(1000)
+                                        Thread.sleep(1500)
                                     } catch (e: InterruptedException) {
                                         e.printStackTrace()
                                     }
@@ -172,39 +184,6 @@ class RecorderService : AccessibilityService() {
         }
     }
 
-
-    private fun viewAll() {
-        //View All
-        val viewAll =
-            au.findNodeByText(
-                au.getTopMostParentNode(rootInActiveWindow),
-                "View All",
-                false,
-                false
-            )
-        viewAll?.apply {
-            performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            recycle()
-            ticker.startReAgain();
-            isLogin = false;
-        }
-    }
-
-    private fun apply() {
-        val apply =
-            au.findNodeByText(
-                au.getTopMostParentNode(rootInActiveWindow),
-                "Apply",
-                false,
-                false
-            )
-        apply?.apply {
-            performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            recycle()
-            ticker.startReAgain();
-            isLogin = false;
-        }
-    }
 
     private fun backing() {
         val back =
@@ -233,6 +212,7 @@ class RecorderService : AccessibilityService() {
             val separatedList =
                 unfilteredList.subList(aNoIndex, unfilteredList.size).toMutableList()
             val modifiedList = separatedList.subList(2, separatedList.size - 3)
+
 
             val splitCr = modifiedList.flatMap { string ->
                 string
@@ -343,22 +323,18 @@ class RecorderService : AccessibilityService() {
                     try {
                         result.put("Result", aes.encrypt(output.toString()))
                         apiManager.saveBankTransaction(result.toString());
-                        Thread.sleep(3000)
                         backing();
                         ticker.startReAgain()
                     } catch (e: JSONException) {
-
                         throw java.lang.RuntimeException(e)
                     }
                 }
 
-            }
-            else
-            {
+            } else {
                 backing()
             }
         } catch (ignored: Exception) {
-            backing();
+
         }
     }
 
@@ -498,8 +474,6 @@ class RecorderService : AccessibilityService() {
                 description
             }
         }
-
-
     }
 
 
@@ -520,4 +494,3 @@ class RecorderService : AccessibilityService() {
     }
 
 }
-
